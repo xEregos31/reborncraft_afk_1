@@ -1,67 +1,60 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
 
+// Render'ın kapanmaması için basit web sunucusu
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-  res.send('Bot aktif!');
+  res.send('xEregos_AFK Botu Aktif!');
 });
 
 app.listen(PORT, () => {
-  console.log(`Web sunucusu ${PORT} portunda hazır.`);
+  console.log(`[WEB]: Web sunucusu ${PORT} portunda çalışıyor.`);
 });
 
+// Bot Ayarları
+const USERNAME = 'xEregos_AFK';
+const PASSWORD = 'mefe3215';
+const SERVER_HOST = 'play.reborncraft.pw';
+const SERVER_PORT = 25565;
+
+let bot = null;
 let ziplamaInterval = null;
 let kontrolInterval = null;
-let baglantiDenedi = false;
 
 function botuBaslat() {
-  if (baglantiDenedi) return;
+  console.log('[BOT]: Sunucuya bağlanılıyor...');
 
-  console.log('Sunucuya bağlanılıyor...');
-  baglantiDenedi = true;
-
-  const bot = mineflayer.createBot({
-    host: 'play.reborncraft.pw',
-    port: 25565,
-    username: 'xEregos_AFK',
+  bot = mineflayer.createBot({
+    host: SERVER_HOST,
+    port: SERVER_PORT,
+    username: USERNAME,
     version: '1.21.6',
     viewDistance: 'tiny',
     checkTimeoutInterval: 120 * 1000,
     physicsEnabled: true
   });
 
+  // Komut gönderme fonksiyonu
   function komutGonder(komut) {
     if (bot && bot._client && typeof bot.chat === 'function') {
       try {
         bot.chat(komut);
       } catch (e) {
-        console.log('Komut gönderilemedi:', e.message);
+        console.log('[HATA]: Komut gönderilemedi:', e.message);
       }
     }
   }
 
-  bot._client?.on('error', (err) => {
-    if (
-      err.name === 'PartialReadError' || 
-      err.message?.includes('Particle') || 
-      err.message?.includes('timed out')
-    ) return;
-    console.log('Paket Uyarısı:', err.message);
-  });
-
+  // Adaya ve evine dönme
   function adayaDon() {
-    console.log('>> Adaya geri dönülüyor (/skyblock -> /home)...');
-    setTimeout(() => {
-      komutGonder('/skyblock');
-    }, 2000);
-
-    setTimeout(() => {
-      komutGonder('/home');
-    }, 12000);
+    console.log('[BOT]: Adaya dönülüyor (/skyblock -> /home)...');
+    setTimeout(() => komutGonder('/skyblock'), 2000);
+    setTimeout(() => komutGonder('/home'), 12000);
   }
 
+  // Sunucu mesajlarını dinleme
   bot.on('message', (jsonMsg) => {
     const mesaj = jsonMsg.toString().trim();
     if (mesaj) console.log(`[SUNUCU]: ${mesaj}`);
@@ -73,36 +66,31 @@ function botuBaslat() {
       mesaj.includes('yeniden başlatılıyor') ||
       mesaj.includes('Lütfen giriş komutunu kullanın')
     ) {
-      console.log('>> Bot adadan ayrıldı veya lobiye düştü! Tekrar adaya dönülüyor...');
+      console.log('[BOT]: Lobiye düşüldü veya aktarıldı, tekrar adaya gidiliyor...');
       adayaDon();
     }
   });
 
-  let akisBasladi = false;
-
+  // Oyuna giriş yapıldığında
   bot.on('spawn', () => {
-    if (akisBasladi) return;
-    akisBasladi = true;
+    console.log('[BOT]: Oyuna başarıyla girildi.');
 
-    console.log('>> Bot oyuna bağlandı. Komut akışı başlatılıyor...');
-
-    // 1. ADIM: Login (Şifreyi Environment Variable üzerinden alıyoruz)
-    const password = process.env.BOT_PASSWORD || 'SIFRE_GIRILMEDI';
+    // 1. Login yap
     setTimeout(() => {
-      komutGonder(`/login ${password}`);
-      console.log('>> [1/3] /login gönderildi.');
+      komutGonder(`/login ${PASSWORD}`);
+      console.log('[BOT]: /login komutu gönderildi.');
     }, 4000);
 
-    // 2. ve 3. ADIM: Skyblock ve Home
+    // 2. Skyblock ve Home komutları
     setTimeout(() => {
       adayaDon();
     }, 8000);
 
-    // AFK Zıplaması (40 saniyede bir)
+    // AFK kalmamak için zıplama (40 saniyede bir)
     if (ziplamaInterval) clearInterval(ziplamaInterval);
     ziplamaInterval = setInterval(() => {
       if (bot && bot.entity) {
-        console.log('>> AFK zıplaması yapılıyor...');
+        console.log('[BOT]: AFK zıplaması yapılıyor...');
         bot.setControlState('jump', true);
         setTimeout(() => {
           if (bot && bot.entity) bot.setControlState('jump', false);
@@ -110,24 +98,21 @@ function botuBaslat() {
       }
     }, 40000);
 
-    // 15 dakikalık periyodik /home emniyeti
+    // Periyodik olarak 15 dakikada bir /home çek
     if (kontrolInterval) clearInterval(kontrolInterval);
     kontrolInterval = setInterval(() => {
       if (bot && bot.entity) {
-        console.log('>> Periyodik kontrol: Adaya /home çekiliyor...');
+        console.log('[BOT]: Periyodik /home atılıyor...');
         komutGonder('/home');
       }
     }, 15 * 60 * 1000);
   });
 
-  bot.on('kicked', (reason) => {
-    console.log('Bot sunucudan atıldı:', reason);
-  });
-
+  // Bağlantı koptuğunda veya atıldığında otomatik tekrar bağlan
+  bot.on('kicked', (reason) => console.log('[BOT]: Atıldı:', reason));
+  
   bot.on('end', () => {
-    console.log('Bağlantı koptu. 15 saniye sonra tekrar deneniyor...');
-    baglantiDenedi = false;
-    akisBasladi = false;
+    console.log('[BOT]: Bağlantı koptu. 15 saniye sonra tekrar bağlanılıyor...');
     if (ziplamaInterval) clearInterval(ziplamaInterval);
     if (kontrolInterval) clearInterval(kontrolInterval);
     setTimeout(botuBaslat, 15000);
@@ -135,9 +120,7 @@ function botuBaslat() {
 
   bot.on('error', (err) => {
     if (err.name === 'PartialReadError' || err.message?.includes('timed out')) return;
-    console.log('Hata oluştu:', err.message);
-    baglantiDenedi = false;
-    akisBasladi = false;
+    console.log('[HATA]:', err.message);
   });
 }
 
