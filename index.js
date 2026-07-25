@@ -23,7 +23,7 @@ const CONFIG = {
   port: 25565,
   username: 'xEregos_AFK',
   password: 'mefe3215',
-  targetUser: 'xEregos' // Komutları atan ana hesap
+  targetUser: 'xEregos' // Komutları gönderen ana hesap
 };
 
 let bot = null;
@@ -55,7 +55,7 @@ function komutGonder(komut) {
   }
 }
 
-// Bekletme (Delay) Yardımcısı
+// Bekletme Yardımcısı
 const bekle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ==========================================
@@ -137,9 +137,9 @@ function botuBaslat() {
       bekleyenTakas = false;
       console.log('[BOT]: Takas menüsü tespit edildi! Envanter boşaltılıyor...');
 
-      await bekle(1000); // Menünün tam yüklenmesini bekle
+      await bekle(1000); // Menünün yüklenmesini bekle
 
-      // Envanterdeki eşyaları takas penceresine aktar (Shift + Sol Tık)
+      // Envanterdeki eşyaları takas alanına aktar (Shift + Sol Tık)
       const invStart = window.inventoryStart;
       const invEnd = window.inventoryEnd;
 
@@ -147,9 +147,9 @@ function botuBaslat() {
         const item = window.slots[slot];
         if (item) {
           try {
-            await bot.clickWindow(slot, 0, 1); // 0: Sol Tık, 1: Shift-Click
+            await bot.clickWindow(slot, 0, 1); // Shift + Sol Tık
             console.log(`[BOT]: ${item.displayName} takas alanına koyuldu.`);
-            await bekle(250); // Sunucu korumasına takılmamak için hafif bekleme
+            await bekle(250);
           } catch (err) {
             console.log('[HATA]: Eşya aktarılırken hata oluştu:', err.message);
           }
@@ -159,9 +159,9 @@ function botuBaslat() {
       await bekle(1000);
 
       // Soldaki Kırmızı Onay Butonuna Basma (Slot 39)
-      let confirmSlot = 39; // Görseldeki soldaki kırmızı butonun slot indeksi
+      let confirmSlot = 39;
 
-      // Dinamik kontrol: 36-44 arası kırmızı materyal arayalım
+      // Kırmızı cam/materyal arama güvencesi (36-44 slot arası)
       for (let s = 36; s <= 44; s++) {
         const item = window.slots[s];
         if (item && (item.name.includes('red') || item.name.includes('kirmizi') || item.name.includes('dye') || item.name.includes('wool') || item.name.includes('concrete'))) {
@@ -172,61 +172,62 @@ function botuBaslat() {
 
       try {
         console.log(`[BOT]: Kırmızı onay butonuna (${confirmSlot}. slot) basılıyor...`);
-        await bot.clickWindow(confirmSlot, 0, 0); // Normal Sol Tık
-        console.log('[BOT]: Takas onaylandı!');
+        await bot.clickWindow(confirmSlot, 0, 0);
+        console.log('[BOT]: Takas başarıyla onaylandı!');
       } catch (err) {
         console.log('[HATA]: Onay butonuna basılamadı:', err.message);
       }
     }
   });
 
-  // SUNUCU MESAJLARINI DİNLEME
+  // ==========================================
+  // 5. SUNUCU MESAJLARINI DİNLEME
+  // ==========================================
   bot.on('message', (jsonMsg) => {
     const mesaj = jsonMsg.toString().trim();
     if (!mesaj) return;
 
     console.log(`[SUNUCU]: ${mesaj}`);
     const kucukMesaj = mesaj.toLowerCase();
+    const hedefKullanici = CONFIG.targetUser.toLowerCase(); // 'xeregos'
 
-    // 1. Şifre İsteme Mesajı
+    // Şifre İsteme Mesajı
     if (kucukMesaj.includes('/login') || kucukMesaj.includes('giriş yapın') || kucukMesaj.includes('sifre')) {
       setTimeout(() => {
         komutGonder(`/login ${CONFIG.password}`);
       }, 1000);
     }
 
-    // 2. /msg ile "isinlan" Komutu
-    if (
-      (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) &&
-      (kucukMesaj.includes('fısıldı') || kucukMesaj.includes('msg') || kucukMesaj.includes('size') || kucukMesaj.includes('->'))
-    ) {
-      console.log(`[BOT]: Işınlanma talebi alındı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
-      setTimeout(() => {
-        komutGonder(`/tpa ${CONFIG.targetUser}`);
-      }, 1500);
+    // SADECE SEN (xEregos) MESAJ ATTIĞINDA ÇALIŞACAK KISIM:
+    if (kucukMesaj.includes(hedefKullanici)) {
+      
+      // 1. Takas Komutu
+      if (kucukMesaj.includes('takas')) {
+        console.log(`[BOT]: Takas talebi algılandı! /takas ${CONFIG.targetUser} gönderiliyor...`);
+        bekleyenTakas = true;
+        setTimeout(() => {
+          komutGonder(`/takas ${CONFIG.targetUser}`);
+        }, 1000);
+      }
+
+      // 2. Işınlanma Komutu
+      if (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) {
+        console.log(`[BOT]: Işınlanma talebi algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
+        setTimeout(() => {
+          komutGonder(`/tpa ${CONFIG.targetUser}`);
+        }, 1000);
+      }
     }
 
-    // 3. /msg ile "takas" Komutu
-    if (
-      kucukMesaj.includes('takas') &&
-      (kucukMesaj.includes('fısıldı') || kucukMesaj.includes('msg') || kucukMesaj.includes('size') || kucukMesaj.includes('->'))
-    ) {
-      console.log(`[BOT]: Takas talebi alındı! /takas ${CONFIG.targetUser} gönderiliyor...`);
-      bekleyenTakas = true;
-      setTimeout(() => {
-        komutGonder(`/takas ${CONFIG.targetUser}`);
-      }, 1500);
-    }
-
-    // 4. Gelen TPA İsteklerini Kabul Etme
+    // Gelen TPA İsteklerini Kabul Etme
     if (kucukMesaj.includes('tpa') || kucukMesaj.includes('ışınlanma isteği') || kucukMesaj.includes('isinlanma istegi')) {
       console.log('[BOT]: TPA isteği kabul ediliyor (/tpaccept)...');
       setTimeout(() => {
         komutGonder('/tpaccept');
-      }, 1500);
+      }, 1000);
     }
 
-    // 5. Lobiye Düşme
+    // Lobiye Düşme Kontrolü
     if (
       kucukMesaj.includes('lobiye') ||
       kucukMesaj.includes('aktarıldınız') ||
