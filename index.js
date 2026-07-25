@@ -30,6 +30,7 @@ function botuBaslat() {
     host: SERVER_HOST,
     port: SERVER_PORT,
     username: USERNAME,
+    version: false, // Sunucu sürümünü otomatik algılasın
     viewDistance: 'tiny',
     checkTimeoutInterval: 120 * 1000,
     physicsEnabled: true
@@ -52,12 +53,12 @@ function botuBaslat() {
     setTimeout(() => {
       komutGonder('/skyblock');
       console.log('[BOT]: /skyblock atıldı.');
-    }, 3000);
+    }, 4000);
 
     setTimeout(() => {
       komutGonder('/home');
       console.log('[BOT]: /home atıldı.');
-    }, 15000);
+    }, 12000);
   }
 
   // Sunucu mesajlarını dinleme
@@ -65,8 +66,15 @@ function botuBaslat() {
     const mesaj = jsonMsg.toString().trim();
     if (mesaj) console.log(`[SUNUCU]: ${mesaj}`);
 
-    // /msg ile "isinlan" veya "ışınlan" yazıldığında /tpa xEregos gönderme
     const kucukMesaj = mesaj.toLowerCase();
+
+    // 1. Otomatik Login Yakalayıcı (Giriş yap uyarısı çıkarsa anında girer)
+    if (kucukMesaj.includes('/login') || kucukMesaj.includes('giriş yap') || kucukMesaj.includes('şifre')) {
+      console.log('[BOT]: Giriş uyarısı algılandı, /login atılıyor...');
+      komutGonder(`/login ${PASSWORD}`);
+    }
+
+    // 2. /msg ile "isinlan" yazıldığında tpa atma
     if (
       (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) &&
       (kucukMesaj.includes('fısıldıyor') || kucukMesaj.includes('msg') || kucukMesaj.includes('size'))
@@ -77,7 +85,7 @@ function botuBaslat() {
       }, 1000);
     }
 
-    // Otomatik TPA Kabul Etme (Gelen istekler için emniyet)
+    // 3. Otomatik TPA Kabul Etme
     if (mesaj.includes('tpa') || mesaj.includes('Işınlanma isteği')) {
       setTimeout(() => {
         komutGonder('/tpaccept');
@@ -85,33 +93,32 @@ function botuBaslat() {
       }, 1000);
     }
 
-    // Lobiye düşme kontrolü
+    // 4. Lobiye düşme veya aktarılma kontrolü
     if (
       mesaj.includes('Lobiye') ||
       mesaj.includes('aktarıldınız') ||
       mesaj.includes('Aktarılıyorsunuz') ||
-      mesaj.includes('yeniden başlatılıyor') ||
-      mesaj.includes('Lütfen giriş komutunu kullanın')
+      mesaj.includes('yeniden başlatılıyor')
     ) {
       console.log('[BOT]: Lobiye düşüldü, tekrar adaya gidiliyor...');
       adayaDon();
     }
   });
 
-  // Oyuna giriş yapıldığında
+  // Oyuna giriş yapıldığında (Spawn)
   bot.on('spawn', () => {
-    console.log('[BOT]: Oyuna bağlantı sağlandı. İşlemler başlatılıyor...');
+    console.log('[BOT]: Bot dünya verisini aldı (Spawn oldu).');
 
-    // 1. ADIM: Login
+    // Ilk girişte şifre gönder
     setTimeout(() => {
       komutGonder(`/login ${PASSWORD}`);
-      console.log('[BOT]: /login gönderildi.');
-    }, 5000);
+      console.log('[BOT]: Ilk /login denemesi gönderildi.');
+    }, 2000);
 
-    // 2. ADIM: Skyblock ve Home
+    // Skyblock dünyasına geçiş
     setTimeout(() => {
       adayaDon();
-    }, 10000);
+    }, 7000);
 
     // AFK Zıplaması (40 saniyede bir)
     if (ziplamaInterval) clearInterval(ziplamaInterval);
