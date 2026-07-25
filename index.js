@@ -1,7 +1,7 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
 
-// Render'ın kapanmaması için basit web sunucusu
+// Render'ın kapanmaması için web sunucusu
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -30,7 +30,6 @@ function botuBaslat() {
     host: SERVER_HOST,
     port: SERVER_PORT,
     username: USERNAME,
-    version: '1.21.6',
     viewDistance: 'tiny',
     checkTimeoutInterval: 120 * 1000,
     physicsEnabled: true
@@ -47,11 +46,18 @@ function botuBaslat() {
     }
   }
 
-  // Adaya ve evine dönme
+  // Adaya ve evine dönme işlemi
   function adayaDon() {
-    console.log('[BOT]: Adaya dönülüyor (/skyblock -> /home)...');
-    setTimeout(() => komutGonder('/skyblock'), 2000);
-    setTimeout(() => komutGonder('/home'), 12000);
+    console.log('[BOT]: Adaya geçiş başlatılıyor (/skyblock -> /home)...');
+    setTimeout(() => {
+      komutGonder('/skyblock');
+      console.log('[BOT]: /skyblock atıldı.');
+    }, 3000);
+
+    setTimeout(() => {
+      komutGonder('/home');
+      console.log('[BOT]: /home atıldı.');
+    }, 15000);
   }
 
   // Sunucu mesajlarını dinleme
@@ -59,6 +65,27 @@ function botuBaslat() {
     const mesaj = jsonMsg.toString().trim();
     if (mesaj) console.log(`[SUNUCU]: ${mesaj}`);
 
+    // /msg ile "isinlan" veya "ışınlan" yazıldığında /tpa xEregos gönderme
+    const kucukMesaj = mesaj.toLowerCase();
+    if (
+      (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) &&
+      (kucukMesaj.includes('fısıldıyor') || kucukMesaj.includes('msg') || kucukMesaj.includes('size'))
+    ) {
+      console.log('[BOT]: Işınlanma isteği algılandı! /tpa xEregos atılıyor...');
+      setTimeout(() => {
+        komutGonder('/tpa xEregos');
+      }, 1000);
+    }
+
+    // Otomatik TPA Kabul Etme (Gelen istekler için emniyet)
+    if (mesaj.includes('tpa') || mesaj.includes('Işınlanma isteği')) {
+      setTimeout(() => {
+        komutGonder('/tpaccept');
+        console.log('[BOT]: TPA isteği kabul edildi!');
+      }, 1000);
+    }
+
+    // Lobiye düşme kontrolü
     if (
       mesaj.includes('Lobiye') ||
       mesaj.includes('aktarıldınız') ||
@@ -66,27 +93,27 @@ function botuBaslat() {
       mesaj.includes('yeniden başlatılıyor') ||
       mesaj.includes('Lütfen giriş komutunu kullanın')
     ) {
-      console.log('[BOT]: Lobiye düşüldü veya aktarıldı, tekrar adaya gidiliyor...');
+      console.log('[BOT]: Lobiye düşüldü, tekrar adaya gidiliyor...');
       adayaDon();
     }
   });
 
   // Oyuna giriş yapıldığında
   bot.on('spawn', () => {
-    console.log('[BOT]: Oyuna başarıyla girildi.');
+    console.log('[BOT]: Oyuna bağlantı sağlandı. İşlemler başlatılıyor...');
 
-    // 1. Login yap
+    // 1. ADIM: Login
     setTimeout(() => {
       komutGonder(`/login ${PASSWORD}`);
-      console.log('[BOT]: /login komutu gönderildi.');
-    }, 4000);
+      console.log('[BOT]: /login gönderildi.');
+    }, 5000);
 
-    // 2. Skyblock ve Home komutları
+    // 2. ADIM: Skyblock ve Home
     setTimeout(() => {
       adayaDon();
-    }, 8000);
+    }, 10000);
 
-    // AFK kalmamak için zıplama (40 saniyede bir)
+    // AFK Zıplaması (40 saniyede bir)
     if (ziplamaInterval) clearInterval(ziplamaInterval);
     ziplamaInterval = setInterval(() => {
       if (bot && bot.entity) {
@@ -94,23 +121,23 @@ function botuBaslat() {
         bot.setControlState('jump', true);
         setTimeout(() => {
           if (bot && bot.entity) bot.setControlState('jump', false);
-        }, 500);
+        }, 600);
       }
     }, 40000);
 
-    // Periyodik olarak 15 dakikada bir /home çek
+    // Periyodik kontrol: 10 dakikada bir /home at
     if (kontrolInterval) clearInterval(kontrolInterval);
     kontrolInterval = setInterval(() => {
       if (bot && bot.entity) {
-        console.log('[BOT]: Periyodik /home atılıyor...');
+        console.log('[BOT]: Periyodik /home kontrolü yapılıyor...');
         komutGonder('/home');
       }
-    }, 15 * 60 * 1000);
+    }, 10 * 60 * 1000);
   });
 
-  // Bağlantı koptuğunda veya atıldığında otomatik tekrar bağlan
+  // Bağlantı kopma durumları
   bot.on('kicked', (reason) => console.log('[BOT]: Atıldı:', reason));
-  
+
   bot.on('end', () => {
     console.log('[BOT]: Bağlantı koptu. 15 saniye sonra tekrar bağlanılıyor...');
     if (ziplamaInterval) clearInterval(ziplamaInterval);
