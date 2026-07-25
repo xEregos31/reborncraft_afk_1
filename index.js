@@ -9,7 +9,7 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log('Web sunucusu hazır.');
+  console.log(`Web sunucusu ${PORT} portunda hazır.`);
 });
 
 let ziplamaInterval = null;
@@ -28,7 +28,7 @@ function botuBaslat() {
     username: 'xEregos_AFK',
     version: '1.21.6',
     viewDistance: 'tiny',
-    checkTimeoutInterval: 120 * 1000, // Timeout süresini 120 saniyeye çıkardık (lag toleransı)
+    checkTimeoutInterval: 120 * 1000,
     physicsEnabled: true
   });
 
@@ -42,7 +42,6 @@ function botuBaslat() {
     }
   }
 
-  // Paket ve Zaman Aşımı Uyarılarını Yakala
   bot._client?.on('error', (err) => {
     if (
       err.name === 'PartialReadError' || 
@@ -52,7 +51,6 @@ function botuBaslat() {
     console.log('Paket Uyarısı:', err.message);
   });
 
-  // Adaya Dönüş Fonksiyonu
   function adayaDon() {
     console.log('>> Adaya geri dönülüyor (/skyblock -> /home)...');
     setTimeout(() => {
@@ -64,7 +62,6 @@ function botuBaslat() {
     }, 12000);
   }
 
-  // Sunucu mesajlarını dinle
   bot.on('message', (jsonMsg) => {
     const mesaj = jsonMsg.toString().trim();
     if (mesaj) console.log(`[SUNUCU]: ${mesaj}`);
@@ -89,9 +86,10 @@ function botuBaslat() {
 
     console.log('>> Bot oyuna bağlandı. Komut akışı başlatılıyor...');
 
-    // 1. ADIM: Login
+    // 1. ADIM: Login (Şifreyi Environment Variable üzerinden alıyoruz)
+    const password = process.env.BOT_PASSWORD || 'SIFRE_GIRILMEDI';
     setTimeout(() => {
-      komutGonder('/login mefe3215');
+      komutGonder(`/login ${password}`);
       console.log('>> [1/3] /login gönderildi.');
     }, 4000);
 
