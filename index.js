@@ -23,7 +23,7 @@ const CONFIG = {
   port: 25565,
   username: 'xEregos_AFK',
   password: 'mefe3215',
-  targetUser: 'xEregos' // Komutları gönderen ana hesap
+  targetUser: 'xEregos' // Takas ve TPA atılacak ana hesap
 };
 
 let bot = null;
@@ -130,16 +130,16 @@ function botuBaslat() {
   // 4. OTOMATİK TAKAS VE MENÜ YÖNETİMİ
   // ==========================================
   bot.on('windowOpen', async (window) => {
-    console.log('[BOT]: Bir menü/pencere açıldı.');
+    console.log(`[BOT]: Menü açıldı. Başlık: "${window.title}"`);
 
-    // Takas penceresi algılama
-    if (bekleyenTakas || (window.title && window.title.includes('Takas'))) {
+    // Takas penceresi açıldıysa
+    if (bekleyenTakas || (window.title && (window.title.includes('Takas') || window.title.includes('Trade')))) {
       bekleyenTakas = false;
-      console.log('[BOT]: Takas menüsü tespit edildi! Envanter boşaltılıyor...');
+      console.log('[BOT]: Takas menüsü aktif! Envanter boşaltılıyor...');
 
-      await bekle(1000); // Menünün yüklenmesini bekle
+      await bekle(800); // Menü yüklenme gecikmesi
 
-      // Envanterdeki eşyaları takas alanına aktar (Shift + Sol Tık)
+      // Envanterdeki tüm eşyaları takas alanına aktar (Shift + Sol Tık)
       const invStart = window.inventoryStart;
       const invEnd = window.inventoryEnd;
 
@@ -148,25 +148,27 @@ function botuBaslat() {
         if (item) {
           try {
             await bot.clickWindow(slot, 0, 1); // Shift + Sol Tık
-            console.log(`[BOT]: ${item.displayName} takas alanına koyuldu.`);
-            await bekle(250);
+            console.log(`[BOT]: ${item.displayName || item.name} takas alanına koyuldu.`);
+            await bekle(200);
           } catch (err) {
             console.log('[HATA]: Eşya aktarılırken hata oluştu:', err.message);
           }
         }
       }
 
-      await bekle(1000);
+      await bekle(800);
 
       // Soldaki Kırmızı Onay Butonuna Basma (Slot 39)
       let confirmSlot = 39;
 
-      // Kırmızı cam/materyal arama güvencesi (36-44 slot arası)
       for (let s = 36; s <= 44; s++) {
         const item = window.slots[s];
-        if (item && (item.name.includes('red') || item.name.includes('kirmizi') || item.name.includes('dye') || item.name.includes('wool') || item.name.includes('concrete'))) {
-          confirmSlot = s;
-          break;
+        if (item && item.name) {
+          const itemName = item.name.toLowerCase();
+          if (itemName.includes('red') || itemName.includes('wool') || itemName.includes('dye') || itemName.includes('glass') || itemName.includes('concrete')) {
+            confirmSlot = s;
+            break;
+          }
         }
       }
 
@@ -189,37 +191,35 @@ function botuBaslat() {
 
     console.log(`[SUNUCU]: ${mesaj}`);
     const kucukMesaj = mesaj.toLowerCase();
-    const hedefKullanici = CONFIG.targetUser.toLowerCase(); // 'xeregos'
 
-    // Şifre İsteme Mesajı
+    // 1. Şifre İsteme Mesajı
     if (kucukMesaj.includes('/login') || kucukMesaj.includes('giriş yapın') || kucukMesaj.includes('sifre')) {
       setTimeout(() => {
         komutGonder(`/login ${CONFIG.password}`);
       }, 1000);
     }
 
-    // SADECE SEN (xEregos) MESAJ ATTIĞINDA ÇALIŞACAK KISIM:
-    if (kucukMesaj.includes(hedefKullanici)) {
-      
-      // 1. Takas Komutu
-      if (kucukMesaj.includes('takas')) {
-        console.log(`[BOT]: Takas talebi algılandı! /takas ${CONFIG.targetUser} gönderiliyor...`);
+    // 2. TAKAS TETİKLEYİCİSİ (Esnek algılama)
+    if (kucukMesaj.includes('takas') || kucukMesaj.includes('trade') || kucukMesaj.includes('tks')) {
+      // Sunucunun kendi bildirim mesajlarında sonsuz döngüye girmemesi için filtre
+      if (!kucukMesaj.includes('gönderildi') && !kucukMesaj.includes('başladı') && !kucukMesaj.includes('kabul etti')) {
+        console.log(`[BOT]: Takas komutu algılandı! /takas ${CONFIG.targetUser} gönderiliyor...`);
         bekleyenTakas = true;
         setTimeout(() => {
           komutGonder(`/takas ${CONFIG.targetUser}`);
-        }, 1000);
-      }
-
-      // 2. Işınlanma Komutu
-      if (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) {
-        console.log(`[BOT]: Işınlanma talebi algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
-        setTimeout(() => {
-          komutGonder(`/tpa ${CONFIG.targetUser}`);
-        }, 1000);
+        }, 800);
       }
     }
 
-    // Gelen TPA İsteklerini Kabul Etme
+    // 3. IŞINLANMA TETİKLEYİCİSİ
+    if (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) {
+      console.log(`[BOT]: Işınlanma komutu algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
+      setTimeout(() => {
+        komutGonder(`/tpa ${CONFIG.targetUser}`);
+      }, 800);
+    }
+
+    // 4. Gelen TPA İsteklerini Kabul Etme
     if (kucukMesaj.includes('tpa') || kucukMesaj.includes('ışınlanma isteği') || kucukMesaj.includes('isinlanma istegi')) {
       console.log('[BOT]: TPA isteği kabul ediliyor (/tpaccept)...');
       setTimeout(() => {
@@ -227,7 +227,7 @@ function botuBaslat() {
       }, 1000);
     }
 
-    // Lobiye Düşme Kontrolü
+    // 5. Lobiye Düşme Kontrolü
     if (
       kucukMesaj.includes('lobiye') ||
       kucukMesaj.includes('aktarıldınız') ||
