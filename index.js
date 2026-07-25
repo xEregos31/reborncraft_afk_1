@@ -23,7 +23,7 @@ const CONFIG = {
   port: 25565,
   username: 'xEregos_AFK',
   password: 'mefe3215',
-  targetUser: 'xEregos' // Ana hesabın
+  targetUser: 'xEregos' // Takas ve TPA atılacak ana hesap
 };
 
 let bot = null;
@@ -132,12 +132,12 @@ function botuBaslat() {
   bot.on('windowOpen', async (window) => {
     console.log(`[BOT]: Menü açıldı. Başlık: "${window.title}"`);
 
-    // Takas penceresi kontrolü
+    // Takas penceresi açıldıysa
     if (bekleyenTakas || (window.title && (window.title.includes('Takas') || window.title.includes('Trade')))) {
       bekleyenTakas = false;
       console.log('[BOT]: Takas menüsü aktif! Envanter boşaltılıyor...');
 
-      await bekle(800); // Menü yüklenme gecikmesi
+      await bekle(800);
 
       // Envanterdeki tüm eşyaları takas alanına aktar (Shift + Sol Tık)
       const invStart = window.inventoryStart;
@@ -199,31 +199,23 @@ function botuBaslat() {
       }, 1000);
     }
 
-    // 2. SENİN BOTA TAKAS İSTEĞİ ATMANI YAKALAMA (En Garantili Yöntem)
-    if (
-      kucukMesaj.includes('takas') &&
-      (kucukMesaj.includes('istek') || kucukMesaj.includes('davet') || kucukMesaj.includes('gönderdi') || kucukMesaj.includes('istiyor'))
-    ) {
-      console.log(`[BOT]: Oyun içi takas daveti algılandı! Kabul ediliyor...`);
-      bekleyenTakas = true;
-      setTimeout(() => {
-        komutGonder(`/takas ${CONFIG.targetUser}`);
-      }, 500);
-    }
-
-    // 3. MSG İLE "TAKAS" YAZILDIĞINDA ÇALIŞACAK KISIM
+    // 2. TAKAS TETİKLEYİCİSİ (Sadece /takas xEregos gönderir)
     if (kucukMesaj.includes('takas') || kucukMesaj.includes('trade')) {
-      if (!kucukMesaj.includes('gönderildi') && !kucukMesaj.includes('başladı') && !kucukMesaj.includes('kabul etti')) {
-        console.log(`[BOT]: Msg takas algılandı. Önce TPA atıp ardından takas gönderiliyor...`);
+      if (
+        !kucukMesaj.includes('başladı') &&
+        !kucukMesaj.includes('kabul edildi') &&
+        !kucukMesaj.includes('tamamlandı') &&
+        !kucukMesaj.includes('iptal')
+      ) {
+        console.log(`[BOT]: Takas algılandı! /takas ${CONFIG.targetUser} gönderiliyor...`);
         bekleyenTakas = true;
-        komutGonder(`/tpa ${CONFIG.targetUser}`); // Yakına gelmek için TPA
         setTimeout(() => {
           komutGonder(`/takas ${CONFIG.targetUser}`);
-        }, 1500);
+        }, 800);
       }
     }
 
-    // 4. IŞINLANMA TETİKLEYİCİSİ
+    // 3. IŞINLANMA TETİKLEYİCİSİ (Sadece "isinlan" veya "ışınlan" denirse TPA atar)
     if (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) {
       console.log(`[BOT]: Işınlanma komutu algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
       setTimeout(() => {
@@ -231,7 +223,7 @@ function botuBaslat() {
       }, 800);
     }
 
-    // 5. GELEN TPA İSTEKLERİNİ KABUL ETME
+    // 4. GELEN TPA İSTEKLERİNİ KABUL ETME
     if (kucukMesaj.includes('tpa') || kucukMesaj.includes('ışınlanma isteği') || kucukMesaj.includes('isinlanma istegi')) {
       console.log('[BOT]: TPA isteği kabul ediliyor (/tpaccept)...');
       setTimeout(() => {
@@ -239,7 +231,7 @@ function botuBaslat() {
       }, 1000);
     }
 
-    // 6. LOBİYE DÜŞME KONTROLÜ
+    // 5. LOBİYE DÜŞME KONTROLÜ
     if (
       kucukMesaj.includes('lobiye') ||
       kucukMesaj.includes('aktarıldınız') ||
