@@ -23,14 +23,14 @@ const CONFIG = {
   port: 25565,
   username: 'xEregos_AFK',
   password: 'mefe3215',
-  targetUser: 'xEregos' // Takas ve TPA atılacak ana hesap
+  targetUser: 'xEregos' // Ana hesap
 };
 
 let bot = null;
 let jumpInterval = null;
 let homeInterval = null;
 let isConnecting = false;
-let bekleyenTakas = false;
+let tpaCooldown = false; // TPA spamını önlemek için koruma
 
 // Zamanlayıcıları temizleme
 function tumZamanlayicilariTemizle() {
@@ -59,7 +59,35 @@ function komutGonder(komut) {
 const bekle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ==========================================
-// 3. BOT MANTIĞI VE BAĞLANTI
+// 3. ENVANTER BOŞALTMA MANTIĞI (Ctrl+Q Mantığı)
+// ==========================================
+async function envanteriYereBosalt() {
+  if (!bot || !bot.inventory) return;
+
+  const items = bot.inventory.items();
+  if (items.length === 0) {
+    console.log('[BOT]: Envanterde atılacak eşya bulunamadı (Envanter boş).');
+    return;
+  }
+
+  console.log(`[BOT]: Envanter boşaltılıyor... Toplam ${items.length} slot eşya atılacak.`);
+
+  for (const item of items) {
+    try {
+      // tossStack = Slottaki tüm eşyayı yere atar (Ctrl+Q ile aynı işlem)
+      await bot.tossStack(item);
+      console.log(`[BOT]: ${item.displayName || item.name} yere atıldı.`);
+      await bekle(300); // Sunucudan kick yememek için kısa gecikme
+    } catch (err) {
+      console.log('[HATA]: Eşya atılırken sorun oluştu:', err.message);
+    }
+  }
+
+  console.log('[BOT]: Envanter tamamen boşaltıldı!');
+}
+
+// ==========================================
+// 4. BOT MANTIĞI VE BAĞLANTI
 // ==========================================
 function botuBaslat() {
   if (isConnecting) return;
@@ -127,62 +155,6 @@ function botuBaslat() {
   });
 
   // ==========================================
-  // 4. OTOMATİK TAKAS VE MENÜ YÖNETİMİ
-  // ==========================================
-  bot.on('windowOpen', async (window) => {
-    console.log(`[BOT]: Menü açıldı. Başlık: "${window.title}"`);
-
-    // Takas penceresi açıldıysa
-    if (bekleyenTakas || (window.title && (window.title.includes('Takas') || window.title.includes('Trade')))) {
-      bekleyenTakas = false;
-      console.log('[BOT]: Takas menüsü aktif! Envanter boşaltılıyor...');
-
-      await bekle(800);
-
-      // Envanterdeki tüm eşyaları takas alanına aktar (Shift + Sol Tık)
-      const invStart = window.inventoryStart;
-      const invEnd = window.inventoryEnd;
-
-      for (let slot = invStart; slot < invEnd; slot++) {
-        const item = window.slots[slot];
-        if (item) {
-          try {
-            await bot.clickWindow(slot, 0, 1); // Shift + Sol Tık
-            console.log(`[BOT]: ${item.displayName || item.name} takas alanına koyuldu.`);
-            await bekle(200);
-          } catch (err) {
-            console.log('[HATA]: Eşya aktarılırken hata oluştu:', err.message);
-          }
-        }
-      }
-
-      await bekle(800);
-
-      // Soldaki Kırmızı Onay Butonuna Basma (Slot 39)
-      let confirmSlot = 39;
-
-      for (let s = 36; s <= 44; s++) {
-        const item = window.slots[s];
-        if (item && item.name) {
-          const itemName = item.name.toLowerCase();
-          if (itemName.includes('red') || itemName.includes('wool') || itemName.includes('dye') || itemName.includes('glass') || itemName.includes('concrete')) {
-            confirmSlot = s;
-            break;
-          }
-        }
-      }
-
-      try {
-        console.log(`[BOT]: Kırmızı onay butonuna (${confirmSlot}. slot) basılıyor...`);
-        await bot.clickWindow(confirmSlot, 0, 0);
-        console.log('[BOT]: Takas başarıyla onaylandı!');
-      } catch (err) {
-        console.log('[HATA]: Onay butonuna basılamadı:', err.message);
-      }
-    }
-  });
-
-  // ==========================================
   // 5. SUNUCU MESAJLARINI DİNLEME
   // ==========================================
   bot.on('message', (jsonMsg) => {
@@ -199,36 +171,50 @@ function botuBaslat() {
       }, 1000);
     }
 
-    // 2. TAKAS TETİKLEYİCİSİ (Sadece /takas xEregos gönderir)
-    if (kucukMesaj.includes('takas') || kucukMesaj.includes('trade')) {
-      if (
-        !kucukMesaj.includes('başladı') &&
-        !kucukMesaj.includes('kabul edildi') &&
-        !kucukMesaj.includes('tamamlandı') &&
-        !kucukMesaj.includes('iptal')
-      ) {
-        console.log(`[BOT]: Takas algılandı! /takas ${CONFIG.targetUser} gönderiliyor...`);
-        bekleyenTakas = true;
-        setTimeout(() => {
-          komutGonder(`/takas ${CONFIG.targetUser}`);
-        }, 800);
+    // 2. ENVANTER BOŞALT TALEBİ ("bosalt", "boşalt", "at", "envanter")
+    if (
+      kucukMesaj.includes('bosalt') ||
+      kucukMesaj.includes('boşalt') ||
+      (kucukMesaj.includes('envanter') && kucukMesaj.includes('at'))
+    ) {
+      if (!kucukMesaj.includes('temizlendi') && !kucukMesaj.includes('silindi')) {
+        console.log('[BOT]: Envanter boşaltma komutu algılandı!');
+        envanteriYereBosalt();
       }
     }
 
-    // 3. IŞINLANMA TETİKLEYİCİSİ (Sadece "isinlan" veya "ışınlan" denirse TPA atar)
+    // 3. IŞINLANMA TETİKLEYİCİSİ (Spam Engelleyici Filtreli)
     if (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) {
-      console.log(`[BOT]: Işınlanma komutu algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
-      setTimeout(() => {
+      // Sunucu sistem mesajlarını filtrele (Döngüyü kıran kısım)
+      const sistemMesajiMi =
+        kucukMesaj.includes('gönderildi') ||
+        kucukMesaj.includes('kabul') ||
+        kucukMesaj.includes('saniye') ||
+        kucukMesaj.includes('bekle') ||
+        kucukMesaj.includes('ışınlanıyor') ||
+        kucukMesaj.includes('ışınlandınız') ||
+        kucukMesaj.includes('istek');
+
+      if (!sistemMesajiMi && !tpaCooldown) {
+        console.log(`[BOT]: Işınlanma talebi algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
+        tpaCooldown = true;
         komutGonder(`/tpa ${CONFIG.targetUser}`);
-      }, 800);
+
+        // 15 saniye boyunca yeni TPA atmasını engeller (Spam Koruması)
+        setTimeout(() => {
+          tpaCooldown = false;
+        }, 15000);
+      }
     }
 
     // 4. GELEN TPA İSTEKLERİNİ KABUL ETME
     if (kucukMesaj.includes('tpa') || kucukMesaj.includes('ışınlanma isteği') || kucukMesaj.includes('isinlanma istegi')) {
-      console.log('[BOT]: TPA isteği kabul ediliyor (/tpaccept)...');
-      setTimeout(() => {
-        komutGonder('/tpaccept');
-      }, 1000);
+      if (!kucukMesaj.includes('gönderildi') && !kucukMesaj.includes('kabul edildi')) {
+        console.log('[BOT]: TPA isteği kabul ediliyor (/tpaccept)...');
+        setTimeout(() => {
+          komutGonder('/tpaccept');
+        }, 1000);
+      }
     }
 
     // 5. LOBİYE DÜŞME KONTROLÜ
@@ -252,7 +238,7 @@ function botuBaslat() {
   bot.on('end', () => {
     console.log('[BOT]: Bağlantı koptu. 15 saniye sonra tekrar bağlanılıyor...');
     isConnecting = false;
-    bekleyenTakas = false;
+    tpaCooldown = false;
     tumZamanlayicilariTemizle();
     bot = null;
     setTimeout(botuBaslat, 15000);
