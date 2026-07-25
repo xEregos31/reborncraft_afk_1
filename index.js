@@ -30,7 +30,19 @@ let bot = null;
 let jumpInterval = null;
 let homeInterval = null;
 let isConnecting = false;
-let tpaCooldown = false; // TPA spamını önlemek için koruma
+let tpaCooldown = false;
+
+// Türkçe Karakterleri Temizleme Yardımcısı
+function turkceTemizle(metin) {
+  return metin
+    .toLowerCase()
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c');
+}
 
 // Zamanlayıcıları temizleme
 function tumZamanlayicilariTemizle() {
@@ -59,27 +71,27 @@ function komutGonder(komut) {
 const bekle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ==========================================
-// 3. ENVANTER BOŞALTMA MANTIĞI (Ctrl+Q Mantığı)
+// 3. ENVANTER BOŞALTMA MANTIĞI (Ctrl+Q Metodu)
 // ==========================================
 async function envanteriYereBosalt() {
   if (!bot || !bot.inventory) return;
 
   const items = bot.inventory.items();
   if (items.length === 0) {
-    console.log('[BOT]: Envanterde atılacak eşya bulunamadı (Envanter boş).');
+    console.log('[BOT]: Envanter zaten boş, atılacak eşya yok.');
     return;
   }
 
-  console.log(`[BOT]: Envanter boşaltılıyor... Toplam ${items.length} slot eşya atılacak.`);
+  console.log(`[BOT]: Envanter boşaltma başladı... Toplam ${items.length} slot eşya atılacak.`);
 
   for (const item of items) {
     try {
-      // tossStack = Slottaki tüm eşyayı yere atar (Ctrl+Q ile aynı işlem)
+      // tossStack: Slottaki tüm eşya grubunu yere atar (Ctrl+Q)
       await bot.tossStack(item);
       console.log(`[BOT]: ${item.displayName || item.name} yere atıldı.`);
-      await bekle(300); // Sunucudan kick yememek için kısa gecikme
+      await bekle(250); // Sunucudan atılmamak için kısa gecikme
     } catch (err) {
-      console.log('[HATA]: Eşya atılırken sorun oluştu:', err.message);
+      console.log('[HATA]: Eşya atılırken hata oluştu:', err.message);
     }
   }
 
@@ -162,45 +174,45 @@ function botuBaslat() {
     if (!mesaj) return;
 
     console.log(`[SUNUCU]: ${mesaj}`);
-    const kucukMesaj = mesaj.toLowerCase();
+    
+    // Mesajı Türkçe karakterlerden arındırıp küçük harfe çeviriyoruz
+    const temizMesaj = turkceTemizle(mesaj);
 
     // 1. Şifre İsteme Mesajı
-    if (kucukMesaj.includes('/login') || kucukMesaj.includes('giriş yapın') || kucukMesaj.includes('sifre')) {
+    if (temizMesaj.includes('/login') || temizMesaj.includes('giris yapin') || temizMesaj.includes('sifre')) {
       setTimeout(() => {
         komutGonder(`/login ${CONFIG.password}`);
       }, 1000);
     }
 
-    // 2. ENVANTER BOŞALT TALEBİ ("bosalt", "boşalt", "at", "envanter")
+    // 2. ÖZEL ENVANTER BOŞALTMA TETİKLEYİCİSİ ("envanteri bosalt" veya "envanter bosalt")
     if (
-      kucukMesaj.includes('bosalt') ||
-      kucukMesaj.includes('boşalt') ||
-      (kucukMesaj.includes('envanter') && kucukMesaj.includes('at'))
+      temizMesaj.includes('envanteri bosalt') ||
+      temizMesaj.includes('envanter bosalt')
     ) {
-      if (!kucukMesaj.includes('temizlendi') && !kucukMesaj.includes('silindi')) {
+      if (!temizMesaj.includes('temizlendi') && !temizMesaj.includes('silindi')) {
         console.log('[BOT]: Envanter boşaltma komutu algılandı!');
         envanteriYereBosalt();
       }
     }
 
-    // 3. IŞINLANMA TETİKLEYİCİSİ (Spam Engelleyici Filtreli)
-    if (kucukMesaj.includes('isinlan') || kucukMesaj.includes('ışınlan')) {
-      // Sunucu sistem mesajlarını filtrele (Döngüyü kıran kısım)
+    // 3. IŞINLANMA TETİKLEYİCİSİ
+    if (temizMesaj.includes('isinlan')) {
       const sistemMesajiMi =
-        kucukMesaj.includes('gönderildi') ||
-        kucukMesaj.includes('kabul') ||
-        kucukMesaj.includes('saniye') ||
-        kucukMesaj.includes('bekle') ||
-        kucukMesaj.includes('ışınlanıyor') ||
-        kucukMesaj.includes('ışınlandınız') ||
-        kucukMesaj.includes('istek');
+        temizMesaj.includes('gonderildi') ||
+        temizMesaj.includes('kabul') ||
+        temizMesaj.includes('saniye') ||
+        temizMesaj.includes('bekle') ||
+        temizMesaj.includes('isinlaniyor') ||
+        temizMesaj.includes('isinlandiniz') ||
+        temizMesaj.includes('istek');
 
       if (!sistemMesajiMi && !tpaCooldown) {
         console.log(`[BOT]: Işınlanma talebi algılandı! /tpa ${CONFIG.targetUser} gönderiliyor...`);
         tpaCooldown = true;
         komutGonder(`/tpa ${CONFIG.targetUser}`);
 
-        // 15 saniye boyunca yeni TPA atmasını engeller (Spam Koruması)
+        // 15 saniye cooldown
         setTimeout(() => {
           tpaCooldown = false;
         }, 15000);
@@ -208,8 +220,8 @@ function botuBaslat() {
     }
 
     // 4. GELEN TPA İSTEKLERİNİ KABUL ETME
-    if (kucukMesaj.includes('tpa') || kucukMesaj.includes('ışınlanma isteği') || kucukMesaj.includes('isinlanma istegi')) {
-      if (!kucukMesaj.includes('gönderildi') && !kucukMesaj.includes('kabul edildi')) {
+    if (temizMesaj.includes('tpa') || temizMesaj.includes('isinlanma istegi')) {
+      if (!temizMesaj.includes('gonderildi') && !temizMesaj.includes('kabul edildi')) {
         console.log('[BOT]: TPA isteği kabul ediliyor (/tpaccept)...');
         setTimeout(() => {
           komutGonder('/tpaccept');
@@ -219,10 +231,10 @@ function botuBaslat() {
 
     // 5. LOBİYE DÜŞME KONTROLÜ
     if (
-      kucukMesaj.includes('lobiye') ||
-      kucukMesaj.includes('aktarıldınız') ||
-      kucukMesaj.includes('aktarılıyorsunuz') ||
-      kucukMesaj.includes('yeniden başlatılıyor')
+      temizMesaj.includes('lobiye') ||
+      temizMesaj.includes('aktarildiniz') ||
+      temizMesaj.includes('aktariliyorsunuz') ||
+      temizMesaj.includes('yeniden baslatiliyor')
     ) {
       console.log('[BOT]: Lobiye geçiş saptandı! Tekrar /skyblock ve /home atılıyor...');
       setTimeout(() => komutGonder('/skyblock'), 4000);
