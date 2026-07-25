@@ -25,7 +25,7 @@ function botuBaslat() {
   const bot = mineflayer.createBot({
     host: 'play.reborncraft.pw',
     port: 25565,
-    username: 'xBetray_31_AFK',
+    username: 'xEregos_AFK',
     version: '1.21.6',
     viewDistance: 'tiny',
     checkTimeoutInterval: 120 * 1000, // Timeout süresini 120 saniyeye çıkardık (lag toleransı)
@@ -91,7 +91,7 @@ function botuBaslat() {
 
     // 1. ADIM: Login
     setTimeout(() => {
-      komutGonder('/login efe43802');
+      komutGonder('/login mefe3215');
       console.log('>> [1/3] /login gönderildi.');
     }, 4000);
 
