@@ -87,12 +87,9 @@ async function noktaliKomutCalistir(komutMetni) {
     // 1. ADIM: Anti-bot yürüyüşünü yap
     await antiBotHareketi();
 
-    // 2. ADIM: İstenen metni/komutu chate gönder
+    // 2. ADIM: Doğrudan genel chate yaz / komutu çalıştır
     komutGonder(komutMetni);
-    console.log(`[BOT]: Chate yazıldı: "${komutMetni}"`);
-
-    // 3. ADIM: Kullanıcıya bilgi ver
-    komutGonder(`/msg ${CONFIG.targetUser} Komut calistirildi: ${komutMetni}`);
+    console.log(`[BOT]: Genel chate yazıldı/komut çalıştırıldı: "${komutMetni}"`);
 
   } catch (err) {
     console.log('[HATA]: Dinamik komut hatası:', err.message);
@@ -108,7 +105,6 @@ async function envanteriYereBosalt() {
   if (!bot || !bot.inventory) return;
 
   if (isDropping) {
-    komutGonder(`/msg ${CONFIG.targetUser} Zaten envanter bosaltiliyor, lutfen bekle!`);
     return;
   }
 
@@ -151,10 +147,8 @@ async function envanteriYereBosalt() {
 
     if (droppedCount > 0) {
       console.log(`[BOT]: Toplam ${droppedCount} slot eşya atıldı!`);
-      komutGonder(`/msg ${CONFIG.targetUser} Envanterdeki ${droppedCount} slot esya yere atildi!`);
     } else {
       console.log('[BOT]: Atılabilecek eşya bulunamadı.');
-      komutGonder(`/msg ${CONFIG.targetUser} Atilabilecek esya bulunamadi veya envanter bos!`);
     }
 
   } catch (err) {
@@ -266,10 +260,8 @@ function botuBaslat() {
       const noktaliEsllesme = hamMesaj.match(new RegExp(`${CONFIG.targetUser}.*?[»>:]\\s*\\.(.+)`, 'i'));
       if (noktaliEsllesme && noktaliEsllesme[1]) {
         const komut = noktaliEsllesme[1].trim();
-        if (!hamMesaj.includes('Calistirildi:')) {
-          noktaliKomutCalistir(komut);
-          return;
-        }
+        noktaliKomutCalistir(komut);
+        return;
       }
     }
 
