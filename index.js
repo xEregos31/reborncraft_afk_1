@@ -59,8 +59,18 @@ function komutGonder(komut) {
 // Bekletme Yardımcısı
 const bekle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Anti-Bot Koruma Yürüyüşü (~2 Blok İleri)
+async function ileriYuru(ms = 800) {
+  if (!bot || !bot.entity) return;
+  console.log('[BOT]: Anti-Bot korumasını geçmek için 2 blok ileri yürünüyor...');
+  bot.setControlState('forward', true);
+  await bekle(ms); // Yaklaşık 2 blok yürüme süresi
+  bot.setControlState('forward', false);
+  await bekle(300); // Karakterin tamamen durmasını bekle
+}
+
 // ==========================================
-// 3. PROTOKOL SEVİYESİNDE ENVANTER BOŞALTMA
+// 3. HAREKET DESTEKLİ ENVANTER BOŞALTMA
 // ==========================================
 async function envanteriYereBosalt() {
   if (!bot || !bot.inventory) return;
@@ -73,13 +83,16 @@ async function envanteriYereBosalt() {
   isDropping = true;
 
   try {
-    // 1. ADIM: Açık menü varsa kapat (Açık menü varken item atılamaz)
+    // 1. ADIM: Anti-Spam korumasını aşmak için önce 2 blok ileri yürü
+    await ileriYuru(800);
+
+    // 2. ADIM: Açık menü varsa kapat
     if (bot.currentWindow) {
       try { bot.closeWindow(bot.currentWindow); } catch (e) {}
       await bekle(500);
     }
 
-    // 2. ADIM: Envanterdeki eşyaları tara
+    // 3. ADIM: Envanter kontrolü
     const items = bot.inventory.items();
 
     if (!items || items.length === 0) {
@@ -92,21 +105,20 @@ async function envanteriYereBosalt() {
     console.log(`[BOT]: Envanterde ${items.length} slot eşya tespit edildi. Atılıyor...`);
     komutGonder(`/msg ${CONFIG.targetUser} Envanter bosaltiliyor (${items.length} slot var)...`);
 
-    // 3. ADIM: Eşyaları ham Ctrl+Q paketi ile fırlat
+    // 4. ADIM: Eşyaları tek tek yere at
     for (const item of items) {
       try {
-        // Mode 4, Button 1 = Minecraft Protokolünde Ctrl+Q (Slottaki grubun tamamını at)
+        // Mode 4, Button 1 = Ctrl+Q paketi
         await bot.clickWindow(item.slot, 1, 4);
         console.log(`[BOT]: Slot ${item.slot} (${item.displayName || item.name}) yere atıldı.`);
       } catch (err1) {
-        // Paket reddedilirse alternatif olarak tossStack dene
         try {
           await bot.tossStack(item);
         } catch (err2) {
           console.log(`[HATA]: Slot ${item.slot} atılamadı:`, err2.message);
         }
       }
-      await bekle(300); // Anti-cheat takılmaması için ideal gecikme
+      await bekle(350);
     }
 
     console.log('[BOT]: Envanter boşaltma tamamlandı!');
@@ -173,10 +185,10 @@ function botuBaslat() {
   });
 
   // ==========================================
-  // 5. FISILTI VE MESAJ DİNLENMESİ (Çift Katmanlı)
+  // 5. FISILTI VE MESAJ DİNLENMESİ
   // ==========================================
   
-  // KATMAN 1: Özel Fısıltı Modülü (Standart /msg yakalayıcı)
+  // KATMAN 1: Özel Fısıltı Modülü
   bot.on('whisper', (username, message) => {
     console.log(`[FISILTI]: ${username} -> ${message}`);
     if (username.toLowerCase() === CONFIG.targetUser.toLowerCase()) {
@@ -193,7 +205,7 @@ function botuBaslat() {
     }
   });
 
-  // KATMAN 2: Ham Chat Modülü (Özel Sunucu Chat Formatları İçin)
+  // KATMAN 2: Ham Chat Modülü
   bot.on('message', (jsonMsg) => {
     const hamMesaj = jsonMsg.toString().trim();
     if (!hamMesaj) return;
