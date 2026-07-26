@@ -32,6 +32,7 @@ let homeInterval = null;
 let isConnecting = false;
 let tpaCooldown = false;
 let isDropping = false;
+let isExecutingCustom = false;
 
 // Zamanlayıcı Temizliği
 function tumZamanlayicilariTemizle() {
@@ -59,18 +60,49 @@ function komutGonder(komut) {
 // Bekletme Yardımcısı
 const bekle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Anti-Bot Koruma Yürüyüşü (~2 Blok İleri)
-async function ileriYuru(ms = 800) {
+// Anti-Bot Koruma Yürüyüşü (2 Blok İleri)
+async function antiBotHareketi() {
   if (!bot || !bot.entity) return;
-  console.log('[BOT]: Anti-Bot korumasını geçmek için 2 blok ileri yürünüyor...');
+  console.log('[BOT]: Anti-Bot engeli için hareket ediliyor...');
+  bot.setControlState('jump', true);
   bot.setControlState('forward', true);
-  await bekle(ms); // Yaklaşık 2 blok yürüme süresi
+  await bekle(1200);
   bot.setControlState('forward', false);
-  await bekle(300); // Karakterin tamamen durmasını bekle
+  bot.setControlState('jump', false);
+  await bekle(500); // Sunucunun konumu işlemesi için bekleme
 }
 
 // ==========================================
-// 3. HAREKET DESTEKLİ ENVANTER BOŞALTMA
+// 3. ÖZEL DİNAMİK KOMUT YÜRÜTÜCÜ
+// ==========================================
+async function noktaliKomutCalistir(komutMetni) {
+  if (!bot || !komutMetni) return;
+  if (isExecutingCustom) return;
+
+  isExecutingCustom = true;
+
+  try {
+    console.log(`[BOT]: Noktalı komut algılandı: "${komutMetni}". Hareket ediliyor...`);
+    
+    // 1. ADIM: Anti-bot yürüyüşünü yap
+    await antiBotHareketi();
+
+    // 2. ADIM: İstenen metni/komutu chate gönder
+    komutGonder(komutMetni);
+    console.log(`[BOT]: Chate yazıldı: "${komutMetni}"`);
+
+    // 3. ADIM: Kullanıcıya bilgi ver
+    komutGonder(`/msg ${CONFIG.targetUser} Komut calistirildi: ${komutMetni}`);
+
+  } catch (err) {
+    console.log('[HATA]: Dinamik komut hatası:', err.message);
+  } finally {
+    isExecutingCustom = false;
+  }
+}
+
+// ==========================================
+// 4. ENVANTER BOŞALTMA MANTIĞI
 // ==========================================
 async function envanteriYereBosalt() {
   if (!bot || !bot.inventory) return;
@@ -83,46 +115,47 @@ async function envanteriYereBosalt() {
   isDropping = true;
 
   try {
-    // 1. ADIM: Anti-Spam korumasını aşmak için önce 2 blok ileri yürü
-    await ileriYuru(800);
-
-    // 2. ADIM: Açık menü varsa kapat
     if (bot.currentWindow) {
       try { bot.closeWindow(bot.currentWindow); } catch (e) {}
       await bekle(500);
     }
 
-    // 3. ADIM: Envanter kontrolü
-    const items = bot.inventory.items();
+    await antiBotHareketi();
 
-    if (!items || items.length === 0) {
-      console.log('[BOT]: Envanter tamamen boş.');
-      komutGonder(`/msg ${CONFIG.targetUser} Envanterimde hic esya yok, zaten bos!`);
-      isDropping = false;
-      return;
-    }
+    const skippedSlots = new Set();
+    let droppedCount = 0;
 
-    console.log(`[BOT]: Envanterde ${items.length} slot eşya tespit edildi. Atılıyor...`);
-    komutGonder(`/msg ${CONFIG.targetUser} Envanter bosaltiliyor (${items.length} slot var)...`);
+    while (true) {
+      const currentItems = bot.inventory.items().filter(item => !skippedSlots.has(item.slot));
 
-    // 4. ADIM: Eşyaları tek tek yere at
-    for (const item of items) {
+      if (currentItems.length === 0) break;
+
+      const item = currentItems[0];
+      console.log(`[BOT]: Slot ${item.slot} (${item.displayName || item.name}) atılıyor...`);
+
       try {
-        // Mode 4, Button 1 = Ctrl+Q paketi
-        await bot.clickWindow(item.slot, 1, 4);
-        console.log(`[BOT]: Slot ${item.slot} (${item.displayName || item.name}) yere atıldı.`);
-      } catch (err1) {
-        try {
-          await bot.tossStack(item);
-        } catch (err2) {
-          console.log(`[HATA]: Slot ${item.slot} atılamadı:`, err2.message);
+        if (bot.entity) {
+          await bot.look(bot.entity.yaw, 0, true);
         }
+
+        await bot.tossStack(item);
+        droppedCount++;
+        console.log(`[BOT]: ${item.displayName || item.name} başarıyla atıldı.`);
+      } catch (err) {
+        console.log(`[HATA]: Slot ${item.slot} (${item.name}) atılamadı, atlanıyor. Sebep:`, err.message);
+        skippedSlots.add(item.slot);
       }
-      await bekle(350);
+
+      await bekle(400);
     }
 
-    console.log('[BOT]: Envanter boşaltma tamamlandı!');
-    komutGonder(`/msg ${CONFIG.targetUser} Envanter tamamen bosaltildi!`);
+    if (droppedCount > 0) {
+      console.log(`[BOT]: Toplam ${droppedCount} slot eşya atıldı!`);
+      komutGonder(`/msg ${CONFIG.targetUser} Envanterdeki ${droppedCount} slot esya yere atildi!`);
+    } else {
+      console.log('[BOT]: Atılabilecek eşya bulunamadı.');
+      komutGonder(`/msg ${CONFIG.targetUser} Atilabilecek esya bulunamadi veya envanter bos!`);
+    }
 
   } catch (err) {
     console.log('[HATA]: Envanter boşaltma genel hatası:', err.message);
@@ -132,7 +165,7 @@ async function envanteriYereBosalt() {
 }
 
 // ==========================================
-// 4. BOT MANTIĞI VE BAĞLANTI
+// 5. BOT MANTIĞI VE BAĞLANTI
 // ==========================================
 function botuBaslat() {
   if (isConnecting) return;
@@ -185,17 +218,25 @@ function botuBaslat() {
   });
 
   // ==========================================
-  // 5. FISILTI VE MESAJ DİNLENMESİ
+  // 6. FISILTI VE MESAJ DİNLENMESİ
   // ==========================================
   
   // KATMAN 1: Özel Fısıltı Modülü
   bot.on('whisper', (username, message) => {
     console.log(`[FISILTI]: ${username} -> ${message}`);
     if (username.toLowerCase() === CONFIG.targetUser.toLowerCase()) {
-      const msg = message.toLowerCase();
-      if (msg.includes('drop') || msg.includes('bosalt') || msg.includes('at') || msg.includes('envanter')) {
+      const msg = message.trim();
+
+      // NOKTALI DINAMIK KOMUT KONTROLÜ
+      if (msg.startsWith('.')) {
+        const komut = msg.substring(1).trim();
+        noktaliKomutCalistir(komut);
+        return;
+      }
+      
+      if (msg.toLowerCase().includes('drop') || msg.toLowerCase().includes('bosalt') || msg.toLowerCase().includes('at')) {
         envanteriYereBosalt();
-      } else if (msg.includes('isinlan')) {
+      } else if (msg.toLowerCase().includes('isinlan')) {
         if (!tpaCooldown) {
           tpaCooldown = true;
           komutGonder(`/tpa ${CONFIG.targetUser}`);
@@ -220,14 +261,26 @@ function botuBaslat() {
 
     const hedefAitMi = temiz.includes(CONFIG.targetUser.toLowerCase());
 
-    // 2. ENVANTER BOŞALTMA KOMUTU
-    if (hedefAitMi && (temiz.includes('drop') || temiz.includes('bosalt') || temiz.includes('envanter') || temiz.includes('at'))) {
+    // 2. HAM CHAT NOKTALI KOMUT YAKALAYICI (Örn: [xEregos ➺ Ben] » .selam)
+    if (hedefAitMi) {
+      const noktaliEsllesme = hamMesaj.match(new RegExp(`${CONFIG.targetUser}.*?[»>:]\\s*\\.(.+)`, 'i'));
+      if (noktaliEsllesme && noktaliEsllesme[1]) {
+        const komut = noktaliEsllesme[1].trim();
+        if (!hamMesaj.includes('Calistirildi:')) {
+          noktaliKomutCalistir(komut);
+          return;
+        }
+      }
+    }
+
+    // 3. ENVANTER BOŞALTMA KOMUTU
+    if (hedefAitMi && (temiz.includes('drop') || temiz.includes('bosalt') || temiz.includes('at'))) {
       if (!temiz.includes('temizlendi') && !temiz.includes('silindi') && !temiz.includes('bosaltildi')) {
         envanteriYereBosalt();
       }
     }
 
-    // 3. IŞINLANMA TETİKLEYİCİSİ
+    // 4. IŞINLANMA TETİKLEYİCİSİ
     if (hedefAitMi && temiz.includes('isinlan')) {
       const sistemMesaji =
         temiz.includes('gonderildi') ||
@@ -244,14 +297,14 @@ function botuBaslat() {
       }
     }
 
-    // 4. GELEN TPA İSTEKLERİNİ KABUL ETME
+    // 5. GELEN TPA İSTEKLERİNİ KABUL ETME
     if (temiz.includes('tpa') || temiz.includes('isinlanma istegi')) {
       if (!temiz.includes('gonderildi') && !temiz.includes('kabul edildi')) {
         setTimeout(() => komutGonder('/tpaccept'), 1000);
       }
     }
 
-    // 5. LOBİYE DÜŞME
+    // 6. LOBİYE DÜŞME
     if (temiz.includes('lobiye') || temiz.includes('aktarildiniz') || temiz.includes('yeniden baslatiliyor')) {
       setTimeout(() => komutGonder('/skyblock'), 4000);
       setTimeout(() => komutGonder('/home'), 12000);
@@ -265,6 +318,7 @@ function botuBaslat() {
     isConnecting = false;
     tpaCooldown = false;
     isDropping = false;
+    isExecutingCustom = false;
     tumZamanlayicilariTemizle();
     bot = null;
     setTimeout(botuBaslat, 15000);
