@@ -1,5 +1,6 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
+const vec3 = require('vec3'); // İnşaat konum hesaplamaları için gerekli
 
 // ==========================================
 // 1. RENDER WEB SUNUCUSU (Keep-Alive)
@@ -33,6 +34,7 @@ let isConnecting = false;
 let tpaCooldown = false;
 let isDropping = false;
 let isExecutingCustom = false;
+let isBuilding = false; // İnşaat durum takibi
 
 // Zamanlayıcı Temizliği
 function tumZamanlayicilariTemizle() {
@@ -73,7 +75,114 @@ async function antiBotHareketi() {
 }
 
 // ==========================================
-// 3. ÖZEL DİNAMİK KOMUT YÜRÜTÜCÜ
+// 3. ENVANTER ARAMA & OTO-İNŞAAT MODÜLÜ (3'ü 1 Arada + Shift Koruma)
+// ==========================================
+function envanterdeBul(isim) {
+  if (!bot || !bot.inventory) return null;
+  return bot.inventory.items().find(item => 
+    item.name.toLowerCase().includes(isim) || 
+    (item.displayName && item.displayName.toLowerCase().includes(isim))
+  );
+}
+
+// Tek Turda: Kaktüs -> İp -> Üst Katın Kumu
+async function kaktusIpKumInsaEt(x1, y1, z1, x2, y2, z2) {
+  if (isBuilding) {
+    console.log('[BOT]: Zaten aktif bir inşaat işlemi yürütülüyor!');
+    return;
+  }
+
+  isBuilding = true;
+  console.log(`[İNŞAAT]: Tek geçişli 3'lü dizilim başlatıldı! Alan: (${x1}, ${y1}, ${z1}) -> (${x2}, ${y2}, ${z2})`);
+
+  // İnşaat boyunca kaktüslere/boşluğa düşmeyi önlemek için SHIFT'e basılı tut
+  if (bot && bot.entity) {
+    bot.setControlState('sneak', true);
+    console.log('[İNŞAAT]: Düşmeyi önlemek için Shift (Sneak) aktif edildi.');
+  }
+
+  const minX = Math.min(x1, x2);
+  const maxX = Math.max(x1, x2);
+  const minZ = Math.min(z1, z2);
+  const maxZ = Math.max(z1, z2);
+  const baslangicY = y1; // Tabandaki kumların bulunduğu Y seviyesi
+
+  let tamamlananNokta = 0;
+
+  try {
+    for (let x = minX; x <= maxX; x++) {
+      for (let z = minZ; z <= maxZ; z++) {
+
+        // Satranç Tahtası (Çapraz) Düzeni
+        if ((x + z) % 2 !== 0) continue;
+
+        // Malzeme Kontrolleri
+        const kaktus = envanterdeBul('cactus') || envanterdeBul('kaktus');
+        const ip = envanterdeBul('string') || envanterdeBul('ip');
+        const kum = envanterdeBul('sand') || envanterdeBul('kum');
+
+        if (!kaktus || !ip || !kum) {
+          console.log('[İNŞAAT HATA]: Envanterde Kaktüs, İp veya Kum eksik! İnşaat durduruldu.');
+          break;
+        }
+
+        // 1. ADIM: KAKTÜS (Tabandaki Kumun Üstüne)
+        const kumPos = vec3(x, baslangicY, z);
+        const kumBlock = bot.blockAt(kumPos);
+        if (kumBlock) {
+          if (bot.entity) await bot.lookAt(kumPos);
+          await bot.equip(kaktus, 'hand');
+          await bot.placeBlock(kumBlock, vec3(0, 1, 0));
+          await bekle(150);
+        }
+
+        // 2. ADIM: İP (Kaktüsün Üstüne)
+        const kaktusPos = vec3(x, baslangicY + 1, z);
+        const kaktusBlock = bot.blockAt(kaktusPos);
+        if (kaktusBlock) {
+          if (bot.entity) await bot.lookAt(kaktusPos);
+          await bot.equip(ip, 'hand');
+          await bot.placeBlock(kaktusBlock, vec3(0, 1, 0));
+          await bekle(150);
+        }
+
+        // 3. ADIM: YENİ KUM (İpin Üstüne)
+        const ipPos = vec3(x, baslangicY + 2, z);
+        const ipBlock = bot.blockAt(ipPos);
+        if (ipBlock) {
+          if (bot.entity) await bot.lookAt(ipPos);
+          await bot.equip(kum, 'hand');
+          await bot.placeBlock(ipBlock, vec3(0, 1, 0));
+          await bekle(150);
+        }
+
+        tamamlananNokta++;
+        await bekle(200); // Sunucu kick/lag koruması
+      }
+    }
+
+    console.log(`[İNŞAAT]: Kat başarıyla tamamlandı! Toplam ${tamamlananNokta} noktaya Kaktüs + İp + Kum koyuldu.`);
+
+  } catch (err) {
+    console.log('[HATA]: İnşaat sırasında hata oluştu:', err.message);
+  } finally {
+    isBuilding = false;
+
+    // İnşaat bitince Shift'i bırak
+    if (bot && bot.entity) {
+      bot.setControlState('sneak', false);
+      console.log('[İNŞAAT]: İnşaat bitti, Shift bırakıldı.');
+    }
+
+    // Anti-bot adımı atıp /home çek
+    await antiBotHareketi();
+    komutGonder('/home');
+    console.log('[BOT]: /home çekildi.');
+  }
+}
+
+// ==========================================
+// 4. ÖZEL DİNAMİK KOMUT YÜRÜTÜCÜ
 // ==========================================
 async function noktaliKomutCalistir(komutMetni) {
   if (!bot || !komutMetni) return;
@@ -99,14 +208,12 @@ async function noktaliKomutCalistir(komutMetni) {
 }
 
 // ==========================================
-// 4. ENVANTER BOŞALTMA MANTIĞI
+// 5. ENVANTER BOŞALTMA MANTIĞI
 // ==========================================
 async function envanteriYereBosalt() {
   if (!bot || !bot.inventory) return;
 
-  if (isDropping) {
-    return;
-  }
+  if (isDropping) return;
 
   isDropping = true;
 
@@ -159,7 +266,7 @@ async function envanteriYereBosalt() {
 }
 
 // ==========================================
-// 5. BOT MANTIĞI VE BAĞLANTI
+// 6. BOT MANTIĞI VE BAĞLANTI
 // ==========================================
 function botuBaslat() {
   if (isConnecting) return;
@@ -187,14 +294,22 @@ function botuBaslat() {
     if (ilkGiris) {
       ilkGiris = false;
 
-      // Login
+      // 1. AŞAMA: Giriş Komutları
       setTimeout(() => komutGonder(`/login ${CONFIG.password}`), 3000);
-
-      // Skyblock
       setTimeout(() => komutGonder('/skyblock'), 8000);
-
-      // Ada Home
       setTimeout(() => komutGonder('/home'), 16000);
+
+      // 2. AŞAMA: Texture Yükleme & 240 Sn Bekleme
+      setTimeout(() => {
+        console.log('[BOT]: /farmtexture komutu gönderiliyor...');
+        komutGonder('/farmtexture');
+      }, 20000);
+
+      // 20. saniyeden itibaren 240 saniye (4 dk) bekle = 260. saniyede bildirim at
+      setTimeout(() => {
+        console.log('[BOT]: Texture bekleme süresi doldu. Bildirim gönderiliyor...');
+        komutGonder(`/msg ${CONFIG.targetUser} Hazirim Efendim`);
+      }, 260000);
 
       // AFK Zıplama
       jumpInterval = setInterval(() => {
@@ -204,33 +319,59 @@ function botuBaslat() {
         }
       }, 30000);
 
-      // Periyodik Home
+      // Periyodik Home (İnşaat yapmıyorsa)
       homeInterval = setInterval(() => {
-        if (bot && bot.entity) komutGonder('/home');
+        if (bot && bot.entity && !isBuilding) komutGonder('/home');
       }, 10 * 60 * 1000);
     }
   });
 
+  // EKRAN PENCERELERİ (GUI) GELDİĞİNDE HAREKETLERİ DONDUR
+  bot.on('windowOpen', (window) => {
+    console.log(`[BİLGİ]: Ekrana bir menü/pencere geldi ("${window.title}"). Hareketler durduruldu.`);
+    if (bot && bot.entity) {
+      bot.clearControlStates();
+    }
+  });
+
   // ==========================================
-  // 6. FISILTI VE MESAJ DİNLENMESİ
+  // 7. FISILTI VE MESAJ DİNLENMESİ
   // ==========================================
   
   // KATMAN 1: Özel Fısıltı Modülü
   bot.on('whisper', (username, message) => {
     console.log(`[FISILTI]: ${username} -> ${message}`);
     if (username.toLowerCase() === CONFIG.targetUser.toLowerCase()) {
-      const msg = message.trim();
+      const msg = message.trim().toLowerCase();
 
-      // NOKTALI DINAMIK KOMUT KONTROLÜ
-      if (msg.startsWith('.')) {
-        const komut = msg.substring(1).trim();
+      // 1. OYUNDAN ÇIKIŞ KOMUTU (/msg xEregos_AFK oyundan cik)
+      if (msg.includes('oyundan cik') || msg.includes('oyundan çık') || msg === 'cik' || msg === 'çık' || msg === '.quit') {
+        console.log('[BOT]: Çıkış komutu algılandı! Oyundan çıkılıyor...');
+        tumZamanlayicilariTemizle();
+        isConnecting = false;
+        bot.quit('Eregos tarafından verilen komut ile oyundan çıkıldı.');
+        return;
+      }
+
+      // 2. INSAAT KOMUTU: .insa X1 Y1 Z1 X2 Y2 Z2
+      const insaMatch = message.trim().match(/^\.insa\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)/i);
+      if (insaMatch) {
+        const [, x1, y1, z1, x2, y2, z2] = insaMatch.map(Number);
+        kaktusIpKumInsaEt(x1, y1, z1, x2, y2, z2);
+        return;
+      }
+
+      // 3. NOKTALI DINAMIK KOMUT KONTROLÜ
+      if (message.trim().startsWith('.')) {
+        const komut = message.trim().substring(1).trim();
         noktaliKomutCalistir(komut);
         return;
       }
       
-      if (msg.toLowerCase().includes('drop') || msg.toLowerCase().includes('bosalt') || msg.toLowerCase().includes('at')) {
+      // 4. ENVANTER BOŞALTMA & IŞINLANMA
+      if (msg.includes('drop') || msg.includes('bosalt') || msg.includes('at')) {
         envanteriYereBosalt();
-      } else if (msg.toLowerCase().includes('isinlan')) {
+      } else if (msg.includes('isinlan')) {
         if (!tpaCooldown) {
           tpaCooldown = true;
           komutGonder(`/tpa ${CONFIG.targetUser}`);
@@ -255,24 +396,32 @@ function botuBaslat() {
 
     const hedefAitMi = temiz.includes(CONFIG.targetUser.toLowerCase());
 
-    // 2. HAM CHAT NOKTALI KOMUT YAKALAYICI (Örn: [xEregos ➺ Ben] » .selam)
     if (hedefAitMi) {
+      // INSAAT KOMUTU ALGISI (Genel Chat Üzerinden)
+      const insaMatch = hamMesaj.match(/\.insa\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)/i);
+      if (insaMatch) {
+        const [, x1, y1, z1, x2, y2, z2] = insaMatch.map(Number);
+        kaktusIpKumInsaEt(x1, y1, z1, x2, y2, z2);
+        return;
+      }
+
+      // HAM CHAT NOKTALI KOMUT YAKALAYICI (Örn: .selam)
       const noktaliEsllesme = hamMesaj.match(new RegExp(`${CONFIG.targetUser}.*?[»>:]\\s*\\.(.+)`, 'i'));
-      if (noktaliEsllesme && noktaliEsllesme[1]) {
+      if (noktaliEsllesme && noktaliEsllesme[1] && !noktaliEsllesme[1].startsWith('insa')) {
         const komut = noktaliEsllesme[1].trim();
         noktaliKomutCalistir(komut);
         return;
       }
     }
 
-    // 3. ENVANTER BOŞALTMA KOMUTU
+    // ENVANTER BOŞALTMA KOMUTU
     if (hedefAitMi && (temiz.includes('drop') || temiz.includes('bosalt') || temiz.includes('at'))) {
       if (!temiz.includes('temizlendi') && !temiz.includes('silindi') && !temiz.includes('bosaltildi')) {
         envanteriYereBosalt();
       }
     }
 
-    // 4. IŞINLANMA TETİKLEYİCİSİ
+    // IŞINLANMA TETİKLEYİCİSİ
     if (hedefAitMi && temiz.includes('isinlan')) {
       const sistemMesaji =
         temiz.includes('gonderildi') ||
@@ -289,14 +438,14 @@ function botuBaslat() {
       }
     }
 
-    // 5. GELEN TPA İSTEKLERİNİ KABUL ETME
+    // GELEN TPA İSTEKLERİNİ KABUL ETME
     if (temiz.includes('tpa') || temiz.includes('isinlanma istegi')) {
       if (!temiz.includes('gonderildi') && !temiz.includes('kabul edildi')) {
         setTimeout(() => komutGonder('/tpaccept'), 1000);
       }
     }
 
-    // 6. LOBİYE DÜŞME
+    // LOBİYE DÜŞME
     if (temiz.includes('lobiye') || temiz.includes('aktarildiniz') || temiz.includes('yeniden baslatiliyor')) {
       setTimeout(() => komutGonder('/skyblock'), 4000);
       setTimeout(() => komutGonder('/home'), 12000);
@@ -311,6 +460,7 @@ function botuBaslat() {
     tpaCooldown = false;
     isDropping = false;
     isExecutingCustom = false;
+    isBuilding = false;
     tumZamanlayicilariTemizle();
     bot = null;
     setTimeout(botuBaslat, 15000);
